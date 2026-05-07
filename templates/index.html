@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pré-processador de Texto — SLM Pipeline</title>
+  <style>
+    /* ── Variables de thème ── */
+    :root {
+      --bg:        #0f1117;
+      --surface:   #1a1d27;
+      --surface2:  #22263a;
+      --border:    #2e3250;
+      --accent:    #5b7fff;
+      --accent2:   #7c5cfc;
+      --success:   #3ecf8e;
+      --warning:   #f5a623;
+      --danger:    #e05260;
+      --text:      #e2e8f0;
+      --text-muted:#8892a4;
+      --radius:    10px;
+      --mono:      "JetBrains Mono", "Fira Code", monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Layout ── */
+    header {
+      background: linear-gradient(135deg, var(--accent2), var(--accent));
+      padding: 1.4rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    header h1 { font-size: 1.35rem; font-weight: 700; }
+    header p  { font-size: .85rem; opacity: .85; margin-top: .2rem; }
+
+    main { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+    /* ── Sections ── */
+    .section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .section-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: .5rem;
+    }
+    .badge {
+      display: inline-block;
+      font-size: .7rem;
+      padding: .2rem .55rem;
+      border-radius: 20px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .badge-step { background: var(--accent); color: #fff; }
+
+    /* ── Upload zone ── */
+    #drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    #drop-zone:hover, #drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(91,127,255,.06);
+    }
+    #drop-zone .icon { font-size: 2.5rem; margin-bottom: .75rem; }
+    #drop-zone p { color: var(--text-muted); font-size: .9rem; }
+    #drop-zone span { color: var(--accent); font-weight: 600; }
+    #file-input { display: none; }
+
+    /* ── Boutons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .45rem;
+      padding: .55rem 1.2rem;
+      border: none;
+      border-radius: 7px;
+      font-size: .88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+    }
+    .btn:hover   { opacity: .88; }
+    .btn:active  { transform: scale(.97); }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-success { background: var(--success); color: #0d1117; }
+    .btn-ghost   { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+
+    /* ── Textarea ── */
+    textarea {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: .78rem;
+      line-height: 1.6;
+      padding: .85rem;
+      resize: vertical;
+    }
+    textarea:focus { outline: none; border-color: var(--accent); }
+
+    /* ── Stats row ── */
+    .stats-row {
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+      margin-top: .75rem;
+    }
+    .stat {
+      font-size: .8rem;
+      color: var(--text-muted);
+    }
+    .stat strong { color: var(--text); }
+
+    /* ── Comparaison avant/après ── */
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    @media(max-width: 700px) { .comparison-grid { grid-template-columns: 1fr; } }
+    .panel-label {
+      font-size: .78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: .45rem;
+      color: var(--text-muted);
+    }
+    .panel-label.before { color: var(--warning); }
+    .panel-label.after  { color: var(--success); }
+
+    /* ── Pipeline options ── */
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: .6rem;
+      margin-bottom: 1rem;
+    }
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: .6rem .85rem;
+      cursor: pointer;
+      transition: border-color .15s;
+    }
+    .option-item:hover   { border-color: var(--accent); }
+    .option-item input   { accent-color: var(--accent); width: 15px; height: 15px; }
+    .option-item label   { font-size: .83rem; cursor: pointer; }
+
+    /* ── Chunk size ── */
+    .chunk-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+    input[type=range] { accent-color: var(--accent); flex: 1; min-width: 150px; }
+    #chunk-display {
+      font-size: .85rem;
+      font-weight: 700;
+      color: var(--accent);
+      min-width: 60px;
+    }
+
+    /* ── Étapes log ── */
+    .log-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+    .log-table th, .log-table td {
+      padding: .5rem .75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .log-table th { color: var(--text-muted); font-weight: 600; }
+    .log-table td.removed { color: var(--success); font-family: var(--mono); }
+
+    /* ── Chunks ── */
+    .chunks-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: .75rem;
+      margin-bottom: .75rem;
+    }
+    .chunk-nav {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+    }
+    .chunk-nav span { font-size: .85rem; color: var(--text-muted); }
+    #chunk-box {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 1rem;
+      font-family: var(--mono);
+      font-size: .78rem;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 120px;
+    }
+
+    /* ── Langue ── */
+    .lang-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .45rem;
+      background: rgba(62,207,142,.12);
+      color: var(--success);
+      border: 1px solid rgba(62,207,142,.3);
+      border-radius: 20px;
+      padding: .3rem .85rem;
+      font-size: .85rem;
+      font-weight: 600;
+    }
+
+    /* ── Prompt type ── */
+    select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      color: var(--text);
+      padding: .5rem .75rem;
+      font-size: .85rem;
+    }
+    select:focus { outline: none; border-color: var(--accent); }
+
+    /* ── JSON payload ── */
+    #payload-box {
+      background: #0d1117;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 1rem;
+      font-family: var(--mono);
+      font-size: .78rem;
+      line-height: 1.6;
+      white-space: pre;
+      overflow-x: auto;
+    }
+    .json-key    { color: #79b8ff; }
+    .json-string { color: #9ecbff; }
+    .json-number { color: #f0883e; }
+
+    /* ── Utilitaires ── */
+    .hidden    { display: none !important; }
+    .flex-row  { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+    .copy-btn  {
+      font-size: .75rem;
+      padding: .3rem .65rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text-muted);
+      cursor: pointer;
+    }
+    .copy-btn:hover { color: var(--text); border-color: var(--accent); }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid rgba(255,255,255,.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      display: inline-block;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed;
+      bottom: 1.5rem; right: 1.5rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: .75rem 1.2rem;
+      font-size: .85rem;
+      box-shadow: 0 4px 20px rgba(0,0,0,.5);
+      transition: opacity .3s;
+      z-index: 999;
+    }
+    #toast.hidden { opacity: 0; pointer-events: none; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Pré-processador de Texto — SLM Pipeline</h1>
+    <p>Extração · Limpeza configurável · Segmentação · Geração de payload</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- ════ ETAPA 1 : Upload ════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="badge badge-step">01</span> Carregar documento
+    </div>
+
+    <div id="drop-zone">
+      <div class="icon">📄</div>
+      <p>Arraste um ficheiro aqui ou <span>clique para selecionar</span></p>
+      <p style="margin-top:.4rem;font-size:.78rem">PDF · DOCX · TXT — 32 MB máx</p>
+      <input type="file" id="file-input" accept=".pdf,.docx,.txt" />
+    </div>
+
+    <div id="file-info" class="hidden" style="margin-top:.85rem;">
+      <div class="flex-row">
+        <span id="file-name" style="font-weight:600;color:var(--accent)"></span>
+        <span class="badge" style="background:var(--surface2);color:var(--text-muted)" id="file-type"></span>
+        <span id="upload-spinner" class="spinner hidden"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════ ETAPA 2 : Texto em bruto ════ -->
+  <div id="section-raw" class="section hidden">
+    <div class="section-title">
+      <span class="badge badge-step">02</span> Texto em bruto extraído
+    </div>
+    <textarea id="raw-text" rows="12" readonly placeholder="O texto extraído aparecerá aqui…"></textarea>
+    <div class="stats-row" id="stats-raw"></div>
+  </div>
+
+  <!-- ════ ETAPA 3 : Pipeline ════ -->
+  <div id="section-pipeline" class="section hidden">
+    <div class="section-title">
+      <span class="badge badge-step">03</span> Configuração do pipeline de limpeza
+    </div>
+
+    <div class="options-grid">
+      <div class="option-item">
+        <input type="checkbox" id="opt-artifacts" checked />
+        <label for="opt-artifacts">Remoção de artefactos</label>
+      </div>
+      <div class="option-item">
+        <input type="checkbox" id="opt-headers" checked />
+        <label for="opt-headers">Cabeçalhos / rodapés</label>
+      </div>
+      <div class="option-item">
+        <input type="checkbox" id="opt-linebreaks" checked />
+        <label for="opt-linebreaks">Correção de quebras de linha</label>
+      </div>
+      <div class="option-item">
+        <input type="checkbox" id="opt-paragraphs" checked />
+        <label for="opt-paragraphs">Reconstrução de parágrafos</label>
+      </div>
+      <div class="option-item">
+        <input type="checkbox" id="opt-spaces" checked />
+        <label for="opt-spaces">Normalização de espaços</label>
+      </div>
+      <div class="option-item">
+        <input type="checkbox" id="opt-punct" checked />
+        <label for="opt-punct">Normalização da pontuação</label>
+      </div>
+      <div class="option-item">
+        <input type="checkbox" id="opt-special" checked />
+        <label for="opt-special">Caracteres especiais Unicode</label>
+      </div>
+    </div>
+
+    <div class="chunk-row" style="margin-bottom:1rem">
+      <label style="font-size:.85rem;color:var(--text-muted)">Tamanho dos chunks:</label>
+      <input type="range" id="chunk-size" min="128" max="2048" step="64" value="512" />
+      <span id="chunk-display">512 car.</span>
+    </div>
+
+    <button class="btn btn-primary" id="btn-process">
+      ⚙️ Aplicar pipeline
+    </button>
+  </div>
+
+  <!-- ════ ETAPA 4 : Resultados ════ -->
+  <div id="section-results" class="section hidden">
+    <div class="section-title">
+      <span class="badge badge-step">04</span> Resultados — Antes / Depois
+    </div>
+
+    <div class="comparison-grid" style="margin-bottom:1rem">
+      <div>
+        <div class="panel-label before">⚠ Texto em bruto</div>
+        <textarea id="before-text" rows="12" readonly></textarea>
+        <div class="stats-row" id="stats-before"></div>
+      </div>
+      <div>
+        <div class="panel-label after">✓ Texto limpo</div>
+        <textarea id="after-text" rows="12" readonly></textarea>
+        <div class="stats-row" id="stats-after"></div>
+      </div>
+    </div>
+
+    <!-- Registo das etapas -->
+    <details style="margin-bottom:1rem">
+      <summary style="cursor:pointer;font-size:.88rem;color:var(--text-muted);margin-bottom:.6rem">
+        📋 Registo das etapas aplicadas
+      </summary>
+      <table class="log-table" id="log-table">
+        <thead>
+          <tr><th>Etapa</th><th>Caracteres removidos</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </details>
+
+    <!-- Língua detetada -->
+    <div class="flex-row" style="margin-bottom:1rem">
+      <span style="font-size:.85rem;color:var(--text-muted)">Língua detetada:</span>
+      <span id="lang-badge" class="lang-badge">—</span>
+    </div>
+  </div>
+
+  <!-- ════ ETAPA 5 : Chunks ════ -->
+  <div id="section-chunks" class="section hidden">
+    <div class="section-title">
+      <span class="badge badge-step">05</span> Segmentação em chunks
+    </div>
+
+    <div class="chunks-header">
+      <span id="chunk-info" style="font-size:.85rem;color:var(--text-muted)"></span>
+      <div class="chunk-nav">
+        <button class="btn btn-ghost" id="btn-prev-chunk">← Ant.</button>
+        <span id="chunk-counter">1 / 1</span>
+        <button class="btn btn-ghost" id="btn-next-chunk">Seg. →</button>
+      </div>
+    </div>
+
+    <div id="chunk-box"></div>
+  </div>
+
+  <!-- ════ ETAPA 6 : Payload SLM ════ -->
+  <div id="section-payload" class="section hidden">
+    <div class="section-title">
+      <span class="badge badge-step">06</span> Geração do payload SLM
+    </div>
+
+    <div class="flex-row" style="margin-bottom:1rem;gap:1rem">
+      <div>
+        <label style="font-size:.82rem;color:var(--text-muted);display:block;margin-bottom:.35rem">
+          Tipo de prompt
+        </label>
+        <select id="prompt-type">
+          <option value="general">Análise geral</option>
+          <option value="summarize">Resumo</option>
+          <option value="extract">Extração de entidades</option>
+          <option value="qa">Perguntas / Respostas</option>
+        </select>
+      </div>
+      <div style="align-self:flex-end">
+        <button class="btn btn-success" id="btn-payload">
+          🚀 Gerar payload
+        </button>
+      </div>
+    </div>
+
+    <!-- Prompt gerado -->
+    <div style="margin-bottom:1rem" id="prompt-section" class="hidden">
+      <div class="panel-label" style="margin-bottom:.4rem;color:var(--text-muted)">Prompt gerado</div>
+      <textarea id="prompt-text" rows="5" readonly></textarea>
+    </div>
+
+    <!-- Payload JSON -->
+    <div id="payload-section" class="hidden">
+      <div class="flex-row" style="margin-bottom:.4rem">
+        <div class="panel-label" style="color:var(--text-muted)">Payload JSON</div>
+        <button class="copy-btn" id="btn-copy-payload">⎘ Copiar</button>
+      </div>
+      <div id="payload-box"></div>
+      <p style="font-size:.75rem;color:var(--text-muted);margin-top:.5rem">
+        Endpoint: <code style="color:var(--accent)">POST https://reality.utad.net/slm</code>
+      </p>
+    </div>
+  </div>
+
+</main>
+
+<!-- Notificação toast -->
+<div id="toast" class="hidden"></div>
+
+<script>
+// ──────────────────────────────────────────────────────────
+// Estado da aplicação
+// ──────────────────────────────────────────────────────────
+const state = {
+  rawText:     "",
+  cleanedText: "",
+  chunks:      [],
+  language:    { code: "pt", name: "Português" },
+  chunkIndex:  0,
+};
+
+// ──────────────────────────────────────────────────────────
+// Utilitários
+// ──────────────────────────────────────────────────────────
+function show(id)  { document.getElementById(id).classList.remove("hidden"); }
+function hide(id)  { document.getElementById(id).classList.add("hidden"); }
+
+function toast(msg, duration = 2500) {
+  const el = document.getElementById("toast");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+  setTimeout(() => el.classList.add("hidden"), duration);
+}
+
+function statsHtml(text) {
+  const chars = text.length;
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  const lines = text.split("\n").length;
+  return `<span class="stat"><strong>${chars.toLocaleString()}</strong> car.</span>
+          <span class="stat"><strong>${words.toLocaleString()}</strong> palavras</span>
+          <span class="stat"><strong>${lines.toLocaleString()}</strong> linhas</span>`;
+}
+
+// Colorização JSON mínima
+function colorizeJson(obj) {
+  const str = JSON.stringify(obj, null, 2);
+  return str
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*")\s*:/g,
+             '<span class="json-key">$1</span>:')
+    .replace(/:\s*("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*")/g,
+             ': <span class="json-string">$1</span>')
+    .replace(/:\s*(\d+)/g,
+             ': <span class="json-number">$1</span>');
+}
+
+// ──────────────────────────────────────────────────────────
+// Upload de ficheiros
+// ──────────────────────────────────────────────────────────
+const dropZone  = document.getElementById("drop-zone");
+const fileInput = document.getElementById("file-input");
+
+dropZone.addEventListener("click", () => fileInput.click());
+
+dropZone.addEventListener("dragover", e => {
+  e.preventDefault();
+  dropZone.classList.add("dragover");
+});
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+dropZone.addEventListener("drop", e => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+
+fileInput.addEventListener("change", e => {
+  if (e.target.files.length) handleFile(e.target.files[0]);
+});
+
+async function handleFile(file) {
+  const ext = file.name.split(".").pop().toLowerCase();
+  const allowed = ["pdf", "docx", "txt"];
+  if (!allowed.includes(ext)) {
+    toast("❌ Formato não suportado. Utilize PDF, DOCX ou TXT.");
+    return;
+  }
+
+  // Mostrar informações do ficheiro
+  document.getElementById("file-name").textContent = file.name;
+  document.getElementById("file-type").textContent  = ext.toUpperCase();
+  show("file-info");
+  show("upload-spinner");
+
+  // Esconder as secções seguintes em caso de novo upload
+  ["section-raw","section-pipeline","section-results",
+   "section-chunks","section-payload"].forEach(hide);
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  try {
+    const res  = await fetch("/upload", { method: "POST", body: formData });
+    const data = await res.json();
+    hide("upload-spinner");
+
+    if (data.error) { toast("❌ " + data.error); return; }
+
+    state.rawText = data.raw_text;
+
+    // Mostrar o texto em bruto
+    document.getElementById("raw-text").value         = data.raw_text;
+    document.getElementById("stats-raw").innerHTML    = statsHtml(data.raw_text);
+    show("section-raw");
+    show("section-pipeline");
+
+    toast("✅ Ficheiro carregado — " + data.stats.words.toLocaleString() + " palavras extraídas");
+  } catch (err) {
+    hide("upload-spinner");
+    toast("❌ Erro de rede: " + err.message);
+  }
+}
+
+// ──────────────────────────────────────────────────────────
+// Slider tamanho dos chunks
+// ──────────────────────────────────────────────────────────
+const chunkSlider  = document.getElementById("chunk-size");
+const chunkDisplay = document.getElementById("chunk-display");
+chunkSlider.addEventListener("input", () => {
+  chunkDisplay.textContent = chunkSlider.value + " car.";
+});
+
+// ──────────────────────────────────────────────────────────
+// Processamento — pipeline
+// ──────────────────────────────────────────────────────────
+document.getElementById("btn-process").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-process");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> A processar…';
+
+  const options = {
+    remove_artifacts:       document.getElementById("opt-artifacts").checked,
+    remove_headers_footers: document.getElementById("opt-headers").checked,
+    fix_line_breaks:        document.getElementById("opt-linebreaks").checked,
+    reconstruct_paragraphs: document.getElementById("opt-paragraphs").checked,
+    normalize_spaces:       document.getElementById("opt-spaces").checked,
+    normalize_punctuation:  document.getElementById("opt-punct").checked,
+    normalize_special_chars:document.getElementById("opt-special").checked,
+  };
+
+  try {
+    const res  = await fetch("/process", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        raw_text:   state.rawText,
+        options,
+        chunk_size: parseInt(chunkSlider.value),
+      }),
+    });
+    const data = await res.json();
+
+    if (data.error) { toast("❌ " + data.error); return; }
+
+    state.cleanedText = data.cleaned_text;
+    state.chunks      = data.chunks;
+    state.language    = data.language;
+    state.chunkIndex  = 0;
+
+    // ── Comparação antes/depois ──
+    document.getElementById("before-text").value      = state.rawText;
+    document.getElementById("stats-before").innerHTML = statsHtml(state.rawText);
+    document.getElementById("after-text").value       = data.cleaned_text;
+    document.getElementById("stats-after").innerHTML  = statsHtml(data.cleaned_text);
+
+    // ── Registo ──
+    const tbody = document.querySelector("#log-table tbody");
+    tbody.innerHTML = "";
+    data.steps_log.forEach(s => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${s.step}</td>
+                      <td class="removed">${s.chars_removed >= 0
+                        ? "−" + Math.abs(s.chars_removed)
+                        : "+" + Math.abs(s.chars_removed)} car.</td>`; // car. = caracteres
+      tbody.appendChild(tr);
+    });
+
+    // ── Língua ──
+    document.getElementById("lang-badge").textContent =
+      data.language.name + " (" + data.language.code + ")";
+
+    show("section-results");
+
+    // ── Chunks ──
+    document.getElementById("chunk-info").textContent =
+      data.chunk_count + " chunk(s) — tamanho alvo: " + chunkSlider.value + " car.";
+    renderChunk();
+    show("section-chunks");
+    show("section-payload");
+
+    toast("✅ Pipeline aplicado — " + data.chunk_count + " chunk(s) gerados");
+  } catch (err) {
+    toast("❌ Erro: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "⚙️ Aplicar pipeline";
+  }
+});
+
+// ──────────────────────────────────────────────────────────
+// Navegação entre chunks
+// ──────────────────────────────────────────────────────────
+function renderChunk() {
+  const box     = document.getElementById("chunk-box");
+  const counter = document.getElementById("chunk-counter");
+  const n       = state.chunks.length;
+  const i       = state.chunkIndex;
+
+  box.textContent     = n ? state.chunks[i] : "(nenhum chunk)";
+  counter.textContent = n ? `${i + 1} / ${n}` : "0 / 0";
+}
+
+document.getElementById("btn-prev-chunk").addEventListener("click", () => {
+  if (state.chunkIndex > 0) { state.chunkIndex--; renderChunk(); }
+});
+document.getElementById("btn-next-chunk").addEventListener("click", () => {
+  if (state.chunkIndex < state.chunks.length - 1) { state.chunkIndex++; renderChunk(); }
+});
+
+// ──────────────────────────────────────────────────────────
+// Geração do payload SLM
+// ──────────────────────────────────────────────────────────
+document.getElementById("btn-payload").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-payload");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> A gerar…';
+
+  try {
+    const res  = await fetch("/generate-payload", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        chunks:      state.chunks,
+        chunk_index: state.chunkIndex,
+        language:    state.language,
+        norm_type:   document.getElementById("prompt-type").value,
+      }),
+    });
+    const data = await res.json();
+
+    if (data.error) { toast("❌ " + data.error); return; }
+
+    document.getElementById("prompt-text").value = data.prompt;
+    show("prompt-section");
+
+    document.getElementById("payload-box").innerHTML = colorizeJson(data.payload);
+    show("payload-section");
+
+    toast("✅ Payload gerado para o chunk " + (data.chunk_index + 1));
+  } catch (err) {
+    toast("❌ Erro: " + err.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "🚀 Gerar payload";
+  }
+});
+
+// Regenerar automaticamente quando o tipo de prompt muda
+document.getElementById("prompt-type").addEventListener("change", () => {
+  const sec = document.getElementById("payload-section");
+  if (!sec.classList.contains("hidden")) {
+    document.getElementById("btn-payload").click();
+  }
+});
+
+// ──────────────────────────────────────────────────────────
+// Copiar o payload
+// ──────────────────────────────────────────────────────────
+document.getElementById("btn-copy-payload").addEventListener("click", async () => {
+  const text = document.getElementById("payload-box").innerText;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("📋 Payload copiado para a área de transferência!");
+  } catch {
+    toast("❌ Não foi possível copiar automaticamente.");
+  }
+});
+</script>
+</body>
+</html>
